@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IDL Bridge · HTTP ⇄ 二进制转码检查器</title>
+<style>
+  :root {
+    --bg: #0e1116;
+    --panel: #161b22;
+    --panel2: #1c2330;
+    --line: #2a3442;
+    --text: #d7dee8;
+    --muted: #8593a6;
+    --accent: #5aa9ff;
+    --accent2: #7ee0a0;
+    --warn: #ffb454;
+    --err: #ff6b6b;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+  }
+  header {
+    padding: 16px 24px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
+  }
+  header h1 { font-size: 17px; margin: 0; font-weight: 600; letter-spacing: .2px; }
+  header .sub { color: var(--muted); font-size: 12.5px; }
+  main { display: grid; grid-template-columns: minmax(340px, 420px) 1fr; gap: 0; min-height: calc(100vh - 59px); }
+  section.left { border-right: 1px solid var(--line); padding: 18px 20px; overflow: auto; }
+  section.right { padding: 18px 22px; overflow: auto; }
+  label { display: block; color: var(--muted); font-size: 12px; margin: 14px 0 5px; letter-spacing: .3px; }
+  select, input, textarea {
+    width: 100%; background: var(--panel); color: var(--text);
+    border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px;
+    font: 13px/1.45 var(--mono);
+  }
+  textarea { resize: vertical; min-height: 90px; }
+  select:focus, input:focus, textarea:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+  .row > .verb { flex: 0 0 120px; }
+  button {
+    margin-top: 16px; width: 100%; padding: 10px 14px; border-radius: 6px;
+    border: 1px solid #2f6fbf; background: linear-gradient(#2f7fe0, #2668c4);
+    color: #fff; font-weight: 600; font-size: 13.5px; cursor: pointer;
+  }
+  button:hover { filter: brightness(1.08); }
+  button.secondary {
+    background: var(--panel2); border-color: var(--line); color: var(--text);
+    font-weight: 500; margin-top: 8px;
+  }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  .routes { margin-top: 10px; }
+  .route {
+    border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px;
+    margin-bottom: 6px; background: var(--panel); cursor: pointer;
+  }
+  .route:hover { border-color: #37506f; }
+  .route.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .route .t { font-family: var(--mono); font-size: 12.5px; }
+  .route .m { color: var(--muted); font-size: 11.5px; margin-top: 2px; }
+  .badge {
+    display: inline-block; font-size: 10.5px; padding: 1px 6px; border-radius: 999px;
+    border: 1px solid var(--line); color: var(--muted); margin-left: 6px;
+  }
+  .badge.ok { color: var(--accent2); border-color: #2e6b47; }
+  .badge.hit { color: var(--accent); border-color: #2f5f9b; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin: 22px 0 8px; }
+  h2:first-child { margin-top: 0; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; margin-bottom: 12px; }
+  pre { margin: 0; font: 12.5px/1.55 var(--mono); white-space: pre-wrap; word-break: break-word; }
+  pre.bytes { color: #b7c6da; }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: 12.5px; }
+  .kv .k { color: var(--muted); }
+  .kv .v { font-family: var(--mono); }
+  .pill { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; margin-right: 6px; }
+  .pill.path { background: #24384f; color: #8fc4ff; }
+  .pill.query { background: #2d3a26; color: #a8d98a; }
+  .pill.body { background: #44331f; color: #f0b96a; }
+  .err { color: var(--err); }
+  .empty { color: var(--muted); font-style: italic; }
+  .layout { font: 12.5px/1.6 var(--mono); white-space: pre; overflow-x: auto; }
+  .layout .fld { color: var(--accent); }
+  .layout .tag { color: var(--muted); }
+  .layout .unk { color: var(--warn); }
+  .tabs { display: flex; gap: 4px; margin-bottom: 8px; }
+  .tab {
+    padding: 5px 12px; border-radius: 6px 6px 0 0; cursor: pointer; font-size: 12.5px;
+    color: var(--muted); border: 1px solid transparent; border-bottom: none; margin: 0;
+  }
+  .tab.active { color: var(--text); background: var(--panel); border-color: var(--line); }
+  .flexline { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .small { font-size: 11.5px; color: var(--muted); }
+  .mono { font-family: var(--mono); }
+  .status { font-family: var(--mono); font-size: 12px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } section.left { border-right: none; border-bottom: 1px solid var(--line); } }
+</style>
+</head>
+<body>
+<header>
+  <h1>IDL Bridge</h1>
+  <span class="sub">按接口描述做超文本请求 ⇄ 二进制消息转码 · 选一个方法、发一个请求，看路由匹配、请求映射和逐字节编码</span>
+</header>
+
+<main>
+  <section class="left">
+    <h2>1 · 选择方法</h2>
+    <select id="method"></select>
+    <div class="routes" id="routes"></div>
+
+    <h2>2 · 构造请求</h2>
+    <div class="row">
+      <select id="verb" class="verb"></select>
+      <input id="path" placeholder="/v1/…" spellcheck="false">
+    </div>
+    <label for="query">查询参数（可选，与路径里的 ? 等价）</label>
+    <input id="query" placeholder="page_size=2&amp;tags=a&amp;tags=b" spellcheck="false">
+    <label for="body">请求体（JSON，可为空）</label>
+    <textarea id="body" spellcheck="false" placeholder='{"title":"Dune"}'></textarea>
+    <div class="hint" id="bodyHint"></div>
+
+    <button id="send">匹配并转码</button>
+    <button id="sample" class="secondary">用示例值填充路径与请求体</button>
+    <button id="bench" class="secondary">跑一次吞吐基准</button>
+    <div class="hint">请求只做匹配与转码，不调用后端；状态码按后端错误映射规则预演。
+    流式方法默认按 NDJSON 分块输出，加 <span class="mono">stream_format=array</span> 则输出 JSON 数组。</div>
+  </section>
+
+  <section class="right">
+    <h2>路由匹配</h2>
+    <div class="card" id="matchCard"><span class="empty">尚未发起请求</span></div>
+
+    <h2>请求消息</h2>
+    <div class="card" id="msgCard"><span class="empty">—</span></div>
+
+    <h2>字段来源</h2>
+    <div class="card" id="srcCard"><span class="empty">—</span></div>
+
+    <h2>二进制编码</h2>
+    <div class="card">
+      <div class="tabs">
+        <div class="tab active" data-tab="layout">逐字节解释</div>
+        <div class="tab" data-tab="hex">十六进制</div>
+        <div class="tab" data-tab="base64">Base64</div>
+      </div>
+      <div id="tab-layout"><pre class="layout" id="layout"></pre></div>
+      <div id="tab-hex" style="display:none"><pre class="bytes" id="hex"></pre></div>
+      <div id="tab-base64" style="display:none"><pre class="bytes" id="base64"></pre></div>
+      <div class="small" id="wireMeta"></div>
+    </div>
+
+    <h2>说明</h2>
+    <div class="card" id="notes"><span class="empty">选择一个方法后这里会显示其路由与绑定规则。</span></div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let schema = null;
+
+const VERBS = ["GET", "POST", "PUT", "PATCH", "DELETE"];
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+async function loadSchema() {
+  try {
+    const res = await fetch("/_schema");
+    schema = await res.json();
+  } catch (e) {
+    $("notes").innerHTML = '<span class="err">无法加载 /_schema：' + e + '</span>';
+    return;
+  }
+  const sel = $("method");
+  schema.methods.forEach((m, i) => {
+    const opt = el("option", null, m.fullName + (m.serverStreaming ? "  (流式)" : ""));
+    opt.value = String(i);
+    sel.appendChild(opt);
+  });
+  sel.addEventListener("change", () => selectMethod(Number(sel.value)));
+  selectMethod(0);
+}
+
+function selectMethod(index) {
+  const m = schema.methods[index];
+  $("routes").innerHTML = "";
+  m.routes.forEach((r, i) => {
+    const d = el("div", "route" + (i === 0 ? " active" : ""));
+    d.appendChild(el("div", "t", r.method + " " + r.template));
+    const meta = el("div", "m", r.rpc + (r.body ? " · body=" + r.body : " · 无请求体"));
+    d.appendChild(meta);
+    d.addEventListener("click", () => {
+      document.querySelectorAll(".route").forEach((x) => x.classList.remove("active"));
+      d.classList.add("active");
+      $("verb").value = r.method;
+      $("path").value = examplePath(r.template);
+      $("bodyHint").textContent = r.body
+        ? "该方法从请求体读取：" + (r.body === "*" ? "整个请求消息" : r.body)
+        : "该方法不接受请求体（多余的体会被判为错误）";
+    });
+    $("routes").appendChild(d);
+  });
+  const first = m.routes[0];
+  if (first) {
+    $("verb").value = first.method;
+    $("path").value = examplePath(first.template);
+    $("query").value = "";
+    $("body").value = "";
+    $("bodyHint").textContent = first.body
+      ? "该方法从请求体读取：" + (first.body === "*" ? "整个请求消息" : first.body)
+      : "该方法不接受请求体";
+  }
+  renderNotes(m);
+}
+
+function examplePath(template) {
+  return template
+    .replace(/\{[^}=]+\}/g, "example")
+    .replace(/\{[^}]*=([^}]*)\}/g, (_, pat) =>
+      pat.split("/").map((p) => (p === "*" ? "example" : p === "**" ? "example/more" : p)).join("/"));
+}
+
+function renderNotes(m) {
+  const c = $("notes");
+  c.innerHTML = "";
+  const kv = el("div", "kv");
+  const add = (k, v) => { kv.appendChild(el("div", "k", k)); kv.appendChild(el("div", "v", v)); };
+  add("RPC", m.fullName);
+  add("请求类型", m.input);
+  add("响应类型", m.output);
+  add("服务端流式", m.serverStreaming ? "是（NDJSON 分块输出）" : "否");
+  c.appendChild(kv);
+  const fields = el("div", "kv");
+  fields.style.marginTop = "10px";
+  m.requestFields.forEach((f) => {
+    fields.appendChild(el("div", "k", "#" + f.number + " " + f.name));
+    let t = f.type;
+    if (f.messageType) t = f.messageType;
+    if (f.enumType) t = f.enumType;
+    if (f.map) t = f.type;
+    if (f.repeated && !f.map) t = "repeated " + t;
+    fields.appendChild(el("div", "v", t + (f.oneof ? "  (oneof " + f.oneof + ")" : "")));
+  });
+  c.appendChild(fields);
+}
+
+function fmtValue(v) {
+  if (v === null || v === undefined) return "—";
+  if (typeof v === "string") return JSON.stringify(v);
+  return JSON.stringify(v);
+}
+
+function renderMatch(doc) {
+  const c = $("matchCard");
+  c.innerHTML = "";
+  if (doc.error && !doc.matched) {
+    const e = el("div", "err", doc.error.detail);
+    c.appendChild(e);
+  }
+  if (doc.matched) {
+    const line = el("div");
+    line.appendChild(el("span", "pill path", doc.matched.method));
+    line.appendChild(el("span", "mono", doc.matched.template));
+    c.appendChild(line);
+    const kv = el("div", "kv");
+    kv.style.marginTop = "8px";
+    kv.appendChild(el("div", "k", "处理 RPC"));
+    kv.appendChild(el("div", "v", doc.matched.rpc));
+    const vars = doc.matched.vars || {};
+    Object.keys(vars).forEach((k) => {
+      kv.appendChild(el("div", "k", "路径变量 {" + k + "}"));
+      kv.appendChild(el("div", "v", fmtValue(vars[k])));
+    });
+    if (doc.matched.verb) {
+      kv.appendChild(el("div", "k", "动作后缀"));
+      kv.appendChild(el("div", "v", ":" + doc.matched.verb));
+    }
+    c.appendChild(kv);
+  } else if (!doc.error) {
+    c.appendChild(el("div", "empty", "没有匹配到路由"));
+  }
+  if (doc.candidates && doc.candidates.length) {
+    const det = el("details");
+    det.style.marginTop = "10px";
+    const sum = el("summary", "small", "优先级排序（越靠前越具体）");
+    det.appendChild(sum);
+    doc.candidates.forEach((r, i) => {
+      const row = el("div", "route" + (r.matched ? " active" : ""));
+      row.appendChild(el("div", "t", (i + 1) + ". " + r.method + " " + r.template));
+      const b = el("div", "m", r.rpc);
+      if (r.matched) b.appendChild(el("span", "badge hit", "命中"));
+      row.appendChild(b);
+      det.appendChild(row);
+    });
+    c.appendChild(det);
+  }
+}
+
+function renderMessage(doc) {
+  const c = $("msgCard");
+  c.innerHTML = "";
+  if (doc.requestMessage === undefined || doc.requestMessage === null) {
+    if (doc.error) {
+      c.appendChild(el("div", "err", doc.error.code + " · " + doc.error.detail));
+      c.appendChild(el("div", "small", "HTTP 预演状态码：" + doc.error.http));
+    } else {
+      c.appendChild(el("span", "empty", "—"));
+    }
+    return;
+  }
+  const pre = el("pre", null, JSON.stringify(doc.requestMessage, null, 2));
+  c.appendChild(pre);
+}
+
+function renderSources(doc) {
+  const c = $("srcCard");
+  c.innerHTML = "";
+  const list = doc.assignments || [];
+  if (!list.length) {
+    c.appendChild(el("span", "empty", "没有字段被赋值"));
+    return;
+  }
+  const kv = el("div", "kv");
+  list.forEach((a) => {
+    kv.appendChild(el("div", "k"));
+    const pill = el("span", "pill " + a.source, a.source);
+    kv.lastChild.appendChild(pill);
+    kv.lastChild.appendChild(el("span", "mono", a.param || ""));
+    kv.appendChild(el("div", "v", a.field + " = " + a.value));
+  });
+  c.appendChild(kv);
+}
+
+function renderWire(doc) {
+  const w = doc.wire || {};
+  $("layout").textContent = w.layout || "（无）";
+  $("hex").textContent = w.hex || "（无）";
+  $("base64").textContent = w.base64 || "（无）";
+  $("wireMeta").textContent = w.length ? w.length + " 字节" : "无编码输出";
+  colorLayout();
+}
+
+function colorLayout() {
+  const pre = $("layout");
+  const text = pre.textContent;
+  if (!text) return;
+  pre.innerHTML = "";
+  text.split("\n").forEach((line) => {
+    const span = document.createElement("span");
+    if (/!!/.test(line)) span.className = "unk";
+    else if (/#\d+/.test(line)) span.className = "fld";
+    else if (/tag \(#/.test(line) || /^\s*\+\d+\s+\S+\s+tag/.test(line)) span.className = "tag";
+    span.textContent = line + "\n";
+    pre.appendChild(span);
+  });
+}
+
+async function send() {
+  const payload = {
+    method: $("verb").value,
+    path: $("path").value.trim(),
+    query: $("query").value.trim(),
+    body: $("body").value,
+  };
+  let doc;
+  try {
+    const res = await fetch("/_inspect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    doc = await res.json();
+  } catch (e) {
+    $("matchCard").innerHTML = '<span class="err">请求失败：' + e + "</span>";
+    return;
+  }
+  renderMatch(doc);
+  renderMessage(doc);
+  renderSources(doc);
+  renderWire(doc);
+}
+
+async function sample() {
+  const idx = Number($("method").value);
+  const m = schema.methods[idx];
+  const r = m.routes[0];
+  if (!r) return;
+  $("path").value = examplePath(r.template);
+  let sampleBody = {};
+  m.requestFields.forEach((f) => {
+    if (f.name === "parent" || f.name === "name" || f.name === "shelf" || f.name === "scope") return;
+    sampleBody[f.jsonName] = sampleFor(f, 0);
+  });
+  if (r.body === "*") {
+    $("body").value = JSON.stringify(sampleBody, null, 2);
+  } else if (r.body) {
+    $("body").value = JSON.stringify(sampleForMessage(r.body, m), null, 2);
+  }
+}
+
+function sampleForMessage(name, m) {
+  // Fill the named top-level message field from its nested descriptor.
+  const f = m.requestFields.find((x) => x.name === name || x.jsonName === name);
+  if (f && f.messageType) {
+    return { note: "sample" };
+  }
+  return { value: "sample" };
+}
+
+function sampleFor(f, depth) {
+  const t = f.type;
+  if (t === "string") return f.name === "name" ? "shelves/example/books/example" : "sample";
+  if (t === "bytes") return "c2FtcGxl";
+  if (t === "bool") return false;
+  if (t === "double" || t === "float") return 1.5;
+  if (t === "int64" || t === "uint64" || t === "sint64" || t === "fixed64" || t === "sfixed64") return "42";
+  if (t === "int32" || t === "uint32" || t === "sint32" || t === "fixed32" || t === "sfixed32") return 42;
+  if (t === "enum") return 0;
+  if (f.map) return {};
+  if (f.repeated) return [];
+  return {};
+}
+
+async function bench() {
+  let res;
+  try {
+    res = await (await fetch("/_bench?n=2000")).json();
+  } catch (e) {
+    alert("基准失败：" + e);
+    return;
+  }
+  $("notes").innerHTML = '<span class="small">基准：' +
+    res.iterations + " 次匹配+绑定+编码，" +
+    res.perOpMicros.toFixed(1) + " µs/次，" +
+    Math.round(res.opsPerSec).toLocaleString() + " 次/秒；" +
+    "请求体 " + res.bodyBytes + " 字节 → 二进制 " + res.binaryBytes + " 字节</span>";
+}
+
+function initTabs() {
+  document.querySelectorAll(".tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
+      tab.classList.add("active");
+      ["layout", "hex", "base64"].forEach((k) => {
+        $("tab-" + k).style.display = tab.dataset.tab === k ? "" : "none";
+      });
+    });
+  });
+}
+
+VERBS.forEach((v) => {
+  const o = el("option", null, v);
+  o.value = v;
+  $("verb").appendChild(o);
+});
+
+$("send").addEventListener("click", send);
+$("sample").addEventListener("click", sample);
+$("bench").addEventListener("click", bench);
+initTabs();
+loadSchema();
+</script>
+</body>
+</html>

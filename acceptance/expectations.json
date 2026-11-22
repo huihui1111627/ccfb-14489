@@ -1,0 +1,224 @@
+{
+  "description": "Hand-computed expectations for the acceptance schema. Every path/vars, binding, JSON and wire expectation below was prepared by hand, not captured from the implementation.",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/v1/shelves/fiction/books/dune",
+      "wantMethod": "library.v1.LibraryService.GetBook",
+      "wantVars": {
+        "name": "fiction/dune"
+      },
+      "why": "multi-segment variable {name=shelves/*/books/*}"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/shelves//books/dune",
+      "wantMethod": "",
+      "why": "empty segment cannot satisfy a wildcard"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/shelves/fiction/dvds/dune",
+      "wantMethod": "",
+      "why": "literal mismatch"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/shelves/fiction/books",
+      "wantMethod": "library.v1.LibraryService.ListBooks",
+      "wantVars": {
+        "parent": "fiction"
+      },
+      "why": "sibling route, different literal suffix"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/shelves/fiction/books:watch",
+      "wantMethod": "library.v1.LibraryService.WatchShelf",
+      "wantVars": {
+        "shelf": "fiction"
+      },
+      "why": "verb route must beat the verb-less ListBooks route"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/search",
+      "wantMethod": "library.v1.SearchService.Search",
+      "wantVars": {},
+      "why": "fully literal template beats /v1/{q}"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/scopes/music/search",
+      "wantMethod": "library.v1.SearchService.Search",
+      "wantVars": {
+        "scope": "music"
+      },
+      "why": "additional_bindings"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/search/all/beatles",
+      "wantMethod": "library.v1.SearchService.SearchAll",
+      "wantVars": {
+        "q": "beatles"
+      },
+      "why": "literal prefix /v1/search/all beats everything else"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/files/a/b/c.pdf:download",
+      "wantMethod": "library.v1.SearchService.Download",
+      "wantVars": {
+        "path": "a/b/c.pdf"
+      },
+      "why": "catch-all ** with verb"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/files/:download",
+      "wantMethod": "",
+      "why": "catch-all may match zero segments, but a bare \":\" leaves an empty final segment, which is not a valid path segment"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/files/x",
+      "wantMethod": "",
+      "why": "missing :download verb"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/shelves/fiction/books",
+      "wantMethod": "library.v1.LibraryService.CreateBook",
+      "wantVars": {
+        "parent": "fiction"
+      },
+      "why": "the first create binding"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/books",
+      "wantMethod": "",
+      "why": "no rule accepts this path"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/shelves/fiction/books%2Fdune",
+      "wantMethod": "library.v1.LibraryService.GetBook",
+      "wantVars": {
+        "name": "fiction/dune"
+      },
+      "why": "an escaped slash in one segment decodes back into the multi-segment variable"
+    }
+  ],
+  "bindings": [
+    {
+      "name": "path+query",
+      "method": "GET",
+      "path": "/v1/shelves/fiction/books",
+      "query": "page_size=2&genre=FICTION&tags=a&tags=b&include_archived=true&parent=IGNORED",
+      "why": "path wins over query for parent; repeated tags accumulate",
+      "wantJSONFields": {
+        "parent": "fiction",
+        "pageSize": 2,
+        "genre": "FICTION",
+        "tags": [
+          "a",
+          "b"
+        ],
+        "includeArchived": true
+      },
+      "wantHex": "0a0766696374696f6e100220012a01612a01623001"
+    },
+    {
+      "name": "camelCase query names",
+      "method": "GET",
+      "path": "/v1/shelves/s/books",
+      "query": "pageSize=5&includeArchived=true",
+      "wantJSONFields": {
+        "parent": "s",
+        "pageSize": 5,
+        "includeArchived": true
+      }
+    },
+    {
+      "name": "nested and repeated query syntax",
+      "method": "GET",
+      "path": "/v1/bags/main",
+      "query": "bag.i32=7&bag.flag=true&bag.packed_ints=1&bag.packed_ints=2&bag.by_id[3]=three&bag.shelves[top].topic=sci&bag.unpacked_ints[]=4&bag.unpacked_ints[]=5",
+      "why": "though body=bag and the path bound bag.text, query may still fill fields absent from the body",
+      "wantJSONFields": {
+        "name": "main"
+      },
+      "expectError": false,
+      "wantNested": {
+        "bag.i32": 7,
+        "bag.flag": true,
+        "bag.packedInts": [
+          1,
+          2
+        ],
+        "bag.byId": {
+          "3": "three"
+        },
+        "bag.shelves.top.topic": "sci",
+        "bag.unpackedInts": [
+          4,
+          5
+        ]
+      }
+    },
+    {
+      "name": "body maps into a single field",
+      "method": "POST",
+      "path": "/v1/shelves/fiction/books",
+      "body": "{\"name\":\"dune\",\"title\":\"Dune\",\"isbn\":\"9780441172719\",\"genre\":\"FICTION\",\"authors\":[\"Herbert\"]}",
+      "wantJSONFields": {
+        "parent": "fiction"
+      },
+      "wantNested": {
+        "book.title": "Dune",
+        "book.isbn": "9780441172719",
+        "book.genre": "FICTION"
+      }
+    },
+    {
+      "name": "body * with snake_case names",
+      "method": "POST",
+      "path": "/v1/shelves/shelves/fiction/books",
+      "body": "{\"parent\":\"shelves/IGNORED\",\"book\":{\"name\":\"x\",\"title\":\"T\"}}",
+      "wantJSONFields": {
+        "parent": "fiction"
+      },
+      "why": "the path variable wins over the body"
+    },
+    {
+      "name": "unknown body field rejected",
+      "method": "POST",
+      "path": "/v1/shelves/fiction/books",
+      "body": "{\"title\":\"T\",\"nope\":1}",
+      "expectError": true
+    },
+    {
+      "name": "unknown query field rejected",
+      "method": "GET",
+      "path": "/v1/shelves/fiction/books",
+      "query": "nope=1",
+      "expectError": true
+    },
+    {
+      "name": "singular field repeated in query",
+      "method": "GET",
+      "path": "/v1/shelves/fiction/books",
+      "query": "page_size=1&page_size=2",
+      "expectError": true
+    },
+    {
+      "name": "bad int",
+      "method": "GET",
+      "path": "/v1/shelves/fiction/books",
+      "query": "page_size=two",
+      "expectError": true
+    }
+  ]
+}

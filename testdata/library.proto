@@ -1,0 +1,118 @@
+// The acceptance schema exercises every feature the gateway supports:
+// scalars, nested and repeated messages, maps, enums, oneofs, well-known
+// types, multiple HTTP rules per method, additional bindings, multi-segment
+// path variables and a server-streaming method.
+
+syntax = "proto3";
+
+package library.v1;
+
+message Shelf {
+  string name = 1;
+  string topic = 2;
+}
+
+message Book {
+  string name = 1;
+  string title = 2;
+  int64 isbn = 3;
+  repeated string authors = 4;
+  Genre genre = 5;
+}
+
+enum Genre {
+  GENRE_UNSPECIFIED = 0;
+  FICTION = 1;
+  NONFICTION = 2;
+  POETRY = 3;
+}
+
+message GetBookRequest {
+  // Bound from the multi-segment path variable {name=shelves/*/books/*}.
+  string name = 1;
+}
+
+message CreateBookRequest {
+  string parent = 1;
+  Book book = 2;
+}
+
+message ListBooksRequest {
+  string parent = 1;
+  int32 page_size = 2;
+  string page_token = 3;
+  Genre genre = 4;
+  repeated string tags = 5;
+  bool include_archived = 6;
+}
+
+message ListBooksResponse {
+  repeated Book books = 1;
+  string next_page_token = 2;
+}
+
+message ShelfInfo {
+  string shelf = 1;
+  int32 book_count = 2;
+  repeated Book featured = 3;
+}
+
+message GetShelfRequest {
+  string shelf = 1;
+}
+
+message WatchShelfRequest {
+  string shelf = 1;
+  int32 count = 2;
+}
+
+message CatalogMeta {
+  google.protobuf.Timestamp updated_at = 1;
+  google.protobuf.Duration refresh_interval = 2;
+  google.protobuf.Int64Value total_books = 3;
+  google.protobuf.StringValue curator = 4;
+  map<string, string> labels = 5;
+}
+
+service LibraryService {
+  rpc GetBook(GetBookRequest) returns (Book) {
+    option (google.api.http) = {
+      get: "/v1/{name=shelves/*/books/*}"
+    };
+  }
+
+  rpc CreateBook(CreateBookRequest) returns (Book) {
+    option (google.api.http) = {
+      post: "/v1/{parent=shelves/*}/books"
+      body: "book"
+      additional_bindings {
+        post: "/v1/shelves/{parent=shelves/*}/books"
+        body: "*"
+      }
+    };
+  }
+
+  rpc ListBooks(ListBooksRequest) returns (ListBooksResponse) {
+    option (google.api.http) = {
+      get: "/v1/{parent=shelves/*}/books"
+    };
+  }
+
+  rpc GetShelfInfo(GetShelfRequest) returns (ShelfInfo) {
+    option (google.api.http) = {
+      get: "/v1/{shelf=shelves/*}/info"
+    };
+  }
+
+  rpc WatchShelf(WatchShelfRequest) returns (stream Book) {
+    option (google.api.http) = {
+      get: "/v1/{shelf=shelves/*}/books:watch"
+    };
+  }
+
+  rpc GetCatalogMeta(GetShelfRequest) returns (CatalogMeta) {
+    option (google.api.http) = {
+      get: "/v1/{shelf=shelves/*}/meta"
+    };
+  }
+}

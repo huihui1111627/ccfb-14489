@@ -1,0 +1,128 @@
+// A second description exercising precedence, catch-all variables, verbs,
+// oneofs and every scalar type. It shares the package with library.proto so
+// that the testdata directory forms one coherent API.
+syntax = "proto3";
+
+package library.v1;
+
+message ScalarBag {
+  double d = 1;
+  float f = 2;
+  int32 i32 = 3;
+  int64 i64 = 4;
+  uint32 u32 = 5;
+  uint64 u64 = 6;
+  sint32 s32 = 7;
+  sint64 s64 = 8;
+  fixed32 fx32 = 9;
+  fixed64 fx64 = 10;
+  sfixed32 sfx32 = 11;
+  sfixed64 sfx64 = 12;
+  bool flag = 13;
+  string text = 14;
+  bytes blob = 15;
+  Genre genre = 16;
+  repeated int32 packed_ints = 17;
+  repeated int32 unpacked_ints = 18 [packed = false];
+  map<int64, string> by_id = 19;
+  map<string, Shelf> shelves = 20;
+}
+
+message SearchRequest {
+  string q = 1;
+  string scope = 2;
+  repeated string facets = 3;
+  map<string, string> filters = 4;
+  int32 page_size = 5;
+}
+
+message SearchResponse {
+  repeated string results = 1;
+  int32 total = 2;
+}
+
+message ChoiceRequest {
+  oneof selector {
+    string book_name = 1;
+    int64 shelf_id = 2;
+    Book inline_book = 3;
+  }
+  string note = 4;
+}
+
+message ChoiceResponse {
+  string chosen = 1;
+}
+
+message EchoScalarsRequest {
+  ScalarBag bag = 1;
+}
+
+message EchoScalarsResponse {
+  ScalarBag bag = 1;
+}
+
+message DownloadRequest {
+  // Catch-all: matches any number of leading segments.
+  string path = 1;
+  string revision = 2;
+}
+
+message DownloadResponse {
+  bytes content = 1;
+  string path = 2;
+}
+
+message QueryBagRequest {
+  string name = 1;
+  ScalarBag bag = 2;
+}
+
+message QueryBagResponse {
+  ScalarBag bag = 1;
+}
+
+message Empty {}
+
+service SearchService {
+  rpc Search(SearchRequest) returns (SearchResponse) {
+    option (google.api.http) = {
+      get: "/v1/search"
+      additional_bindings {
+        get: "/v1/{scope=scopes/*}/search"
+      }
+    };
+  }
+
+  rpc SearchAll(SearchRequest) returns (SearchResponse) {
+    option (google.api.http) = {
+      get: "/v1/search/all/{q}"
+    };
+  }
+
+  rpc Choose(ChoiceRequest) returns (ChoiceResponse) {
+    option (google.api.http) = {
+      post: "/v1/choices"
+      body: "*"
+    };
+  }
+
+  rpc EchoScalars(EchoScalarsRequest) returns (EchoScalarsResponse) {
+    option (google.api.http) = {
+      post: "/v1/scalars/{bag.text}"
+      body: "bag"
+    };
+  }
+
+  rpc QueryBag(QueryBagRequest) returns (QueryBagResponse) {
+    option (google.api.http) = {
+      get: "/v1/bags/{name}"
+    };
+  }
+
+  rpc Download(DownloadRequest) returns (DownloadResponse) {
+    option (google.api.http) = {
+      get: "/v1/files/{path=**}:download"
+    };
+  }
+}
